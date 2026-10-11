@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Parcels</title>
+  <meta name="description" content="All your inbound deliveries in one place. Paste a shipping email, get a tracker.">
+  <meta name="theme-color" content="#cdb38b" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1b1814" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Parcels">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="masthead">
+      <div class="masthead-row">
+        <h1 class="wordmark">Parcels</h1>
+        <button class="icon-btn" id="settings-btn" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+      <div class="masthead-meta">
+        <span class="stamp" id="stamp">0 inbound</span>
+        <span class="dateline" id="dateline"></span>
+      </div>
+    </header>
+
+    <div class="install-hint" id="install-hint" hidden>
+      <span>Install on iPhone: tap <b>Share</b> → <b>Add to Home Screen</b>.</span>
+      <button class="link-btn" id="install-dismiss">Got it</button>
+    </div>
+
+    <main id="board" aria-live="polite"></main>
+  </div>
+
+  <nav class="dock">
+    <button class="dock-paste" id="paste-btn">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+      Paste shipping email
+    </button>
+    <button class="dock-add" id="add-btn" aria-label="Add manually">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </nav>
+
+  <!-- Add from email -->
+  <dialog class="sheet" id="add-sheet">
+    <form method="dialog" class="sheet-inner" id="add-form">
+      <div class="sheet-head">
+        <h2>New delivery</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+      </div>
+      <label class="field">
+        <span>Email text, tracking link, or number</span>
+        <textarea id="paste-text" rows="6" placeholder="Paste the whole shipping email here — from, subject, body. Multiple packages are fine."></textarea>
+      </label>
+      <div class="row">
+        <button type="button" class="btn ghost" id="clip-btn">Paste from clipboard</button>
+        <button type="button" class="btn" id="scan-btn">Find packages</button>
+      </div>
+      <div id="scan-results"></div>
+    </form>
+  </dialog>
+
+  <!-- Package detail / edit -->
+  <dialog class="sheet" id="detail-sheet">
+    <form method="dialog" class="sheet-inner" id="detail-form"></form>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog class="sheet" id="settings-sheet">
+    <form method="dialog" class="sheet-inner" id="settings-form">
+      <div class="sheet-head">
+        <h2>Settings</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+      </div>
+      <div class="row">
+        <label class="field grow">
+          <span>Your postcode</span>
+          <input id="set-postcode" autocomplete="postal-code" placeholder="1234 AB">
+        </label>
+        <label class="field">
+          <span>Country</span>
+          <select id="set-country">
+            <option value="NL">NL</option><option value="BE">BE</option><option value="DE">DE</option>
+            <option value="FR">FR</option><option value="GB">GB</option><option value="PL">PL</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint">PostNL needs your postcode to open the tracking page directly. Stays on this device.</p>
+
+      <h3 class="sub">Move to another device</h3>
+      <p class="hint">Data lives on this device only. Copy it here, paste it into Import on the other one.</p>
+      <div class="row">
+        <button type="button" class="btn ghost" id="export-btn">Copy all data</button>
+        <button type="button" class="btn ghost" id="import-toggle">Import…</button>
+      </div>
+      <div id="import-box" hidden>
+        <label class="field"><span>Paste exported data</span><textarea id="import-text" rows="4"></textarea></label>
+        <button type="button" class="btn" id="import-btn">Import & merge</button>
+      </div>
+
+      <h3 class="sub">Housekeeping</h3>
+      <button type="button" class="btn danger ghost" id="clear-delivered">Remove all delivered</button>
+      <p class="hint tiny">Parcels · v<span id="version"></span> · no account, no server, works offline.</p>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
