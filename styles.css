@@ -78,13 +78,21 @@ a { color: inherit; }
   text-shadow: 1px 1px 0 rgba(255, 255, 255, .25);
 }
 .masthead-meta {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   margin-top: 12px; padding-top: 10px;
   border-top: 3px solid var(--rule);
   font: 600 12px/1 var(--mono);
   text-transform: uppercase; letter-spacing: .08em;
 }
 .dateline { color: var(--muted); margin-left: auto; }
+.sync {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 0; border: 0; background: none;
+  font: inherit; color: var(--muted); letter-spacing: inherit; text-transform: inherit;
+}
+.sync.error { color: var(--accent); }
+.sync.spinning svg { animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .stamp {
   display: inline-block;
   padding: 5px 9px 4px;

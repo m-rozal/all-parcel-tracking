@@ -166,10 +166,9 @@ function contextCarrier(text) {
 }
 
 export function parseTrackingUrl(href) {
-  let url;
-  try { url = new URL(href); } catch { return null; }
-  const host = url.hostname.toLowerCase();
-  const entry = HOSTS.find(([, re]) => re.test(host));
+  const url = splitUrl(href);
+  if (!url) return null;
+  const entry = HOSTS.find(([, re]) => re.test(url.hostname));
   if (!entry) return null;
   let carrier = entry[0];
 
@@ -178,25 +177,38 @@ export function parseTrackingUrl(href) {
     if (m) return { carrier, code: m[1], postcode: m[3]?.toUpperCase() };
   }
 
-  // 17track & friends: carrier comes from the code itself.
-  const params = [...url.searchParams.entries(), ...new URLSearchParams(url.hash.replace(/^#\/?[^?]*\??/, '')).entries()];
-  const fromHash = url.hash.match(/nums=([A-Z0-9,]+)/i);
-  if (fromHash) params.push(['nums', fromHash[1].split(',')[0]]);
+  // Query string plus SPA-style hash params (#/search?itemCode=…, #nums=…).
+  const params = [...queryParams(url.search), ...queryParams(url.hash.replace(/^#\/?[^?=]*\?/, '').replace(/^#/, ''))];
 
   let code = params.find(([k, v]) => TRACK_PARAMS.test(k) && looksLikeCode(v))?.[1];
-  if (!code) {
-    const seg = url.pathname.split('/').filter(Boolean).reverse().find(looksLikeCode);
-    code = seg;
-  }
+  if (!code) code = url.pathname.split('/').filter(Boolean).map(safeDecode).reverse().find(looksLikeCode);
   if (!code) return null;
-  code = decodeURIComponent(code).split(',')[0];
+  code = code.split(',')[0];
+  // 17track & friends: carrier comes from the code itself.
   if (carrier === 'other') carrier = guessCarrier(code);
-  const postcode = carrier === 'postnl' ? url.searchParams.get('P') || url.searchParams.get('p') : undefined;
+  const postcode = carrier === 'postnl' ? params.find(([k]) => k === 'P' || k === 'p')?.[1] : undefined;
   return { carrier, code, postcode: postcode?.toUpperCase() };
 }
 
+// Minimal URL splitting: Google Apps Script (the Gmail inbox job) has no URL/URLSearchParams.
+function splitUrl(href) {
+  const m = String(href).match(/^https?:\/\/([^/?#:]+)(?::\d+)?([^?#]*)(\?[^#]*)?(#.*)?$/i);
+  return m && { hostname: m[1].toLowerCase(), pathname: m[2] || '/', search: m[3] || '', hash: m[4] || '' };
+}
+
+function queryParams(qs) {
+  return qs.replace(/^[?#]/, '').split('&').filter(Boolean).map((kv) => {
+    const i = kv.indexOf('=');
+    return i < 0 ? [safeDecode(kv), ''] : [safeDecode(kv.slice(0, i)), safeDecode(kv.slice(i + 1).replace(/\+/g, ' '))];
+  });
+}
+
+function safeDecode(s) {
+  try { return decodeURIComponent(s); } catch { return s; }
+}
+
 const looksLikeCode = (v) => {
-  const s = decodeURIComponent(v || '').split(',')[0];
+  const s = String(v || '').split(',')[0];
   return /^[A-Z0-9]{8,35}$/i.test(s) && /\d{4}/.test(s) && !/^\d{4}-\d{2}/.test(s);
 };
 

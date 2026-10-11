@@ -1,6 +1,6 @@
 import { CARRIERS, extractPackages, guessCarrier, trackingUrl, universalUrl } from './parser.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const KEY = 'parcels.v1';
 const STATUSES = [
   ['shipped', 'Shipped'],
@@ -26,6 +26,7 @@ function load() {
 }
 let state = load();
 state.ui ??= {};
+state.dismissed ??= []; // codes deleted here, so the email inbox doesn't bring them back
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { toast('Could not save — storage full or blocked'); } };
 const byId = (id) => state.packages.find((p) => p.id === id);
 
@@ -38,7 +39,9 @@ function upsert(found) {
       if (RANK[f.status] > RANK[existing.status]) setStatus(existing, f.status);
       if (f.eta) { existing.eta = f.eta; existing.etaWindow = f.etaWindow || existing.etaWindow; }
       if (f.postcode && !existing.postcode) existing.postcode = f.postcode;
-      if (existing.carrier === 'other' && f.carrier !== 'other') existing.carrier = f.carrier;
+      if (existing.carrier === 'other' && f.carrier && f.carrier !== 'other') existing.carrier = f.carrier;
+      if (f.subject && !existing.subject) existing.subject = f.subject;
+      if (f.title && /parcel$/i.test(existing.title) && !/parcel$/i.test(f.title)) existing.title = f.title;
       existing.updatedAt = Date.now();
       updated++;
     } else {
@@ -46,7 +49,7 @@ function upsert(found) {
       state.packages.push({
         id: uid(), code: f.code, carrier: f.carrier, title: f.title || 'Parcel', subject: f.subject || '',
         retailer: f.retailer || '', eta: f.eta || '', etaWindow: f.etaWindow || '', postcode: f.postcode || '',
-        note: '', status: f.status || 'shipped', createdAt: now, updatedAt: now,
+        note: '', status: f.status || 'shipped', source: f.source || 'paste', createdAt: f.receivedAt || now, updatedAt: now,
         deliveredAt: f.status === 'delivered' ? now : null,
       });
       added++;
@@ -55,6 +58,18 @@ function upsert(found) {
   save();
   render();
   return { added, updated };
+}
+
+function removePackage(id) {
+  const p = byId(id);
+  if (!p) return;
+  state.packages = state.packages.filter((q) => q.id !== id);
+  if (p.source === 'email') {
+    state.dismissed = [...new Set([...state.dismissed, p.code])].slice(-300);
+    inboxRequest({ dismiss: p.code }).catch(() => {});
+  }
+  save();
+  render();
 }
 
 function setStatus(p, status) {
@@ -346,7 +361,9 @@ function openSettings() {
   $('#set-postcode').value = state.settings.postcode || '';
   $('#set-country').value = state.settings.country || 'NL';
   $('#import-box').hidden = true;
+  $('#set-inbox').value = state.settings.inboxUrl || '';
   $('#version').textContent = VERSION;
+  renderSync();
   settingsSheet.showModal();
 }
 
@@ -382,6 +399,68 @@ function importData() {
   } catch {
     toast("That doesn't look like exported Parcels data");
   }
+}
+
+// ---------- email inbox sync (Apps Script web app, see gmail-inbox/) ----------
+
+function inboxRequest(params = {}) {
+  const base = state.settings.inboxUrl;
+  if (!base) return Promise.reject(new Error('not connected'));
+  const url = new URL(base);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  url.searchParams.set('_', Date.now()); // dodge caches
+  return fetch(url, { redirect: 'follow' }).then((r) => r.json());
+}
+
+let syncing = false;
+async function syncInbox({ quiet = false } = {}) {
+  if (!state.settings.inboxUrl || syncing) return;
+  syncing = true;
+  renderSync();
+  try {
+    const data = await inboxRequest();
+    if (!data.ok) throw new Error(data.error || 'sync failed');
+    const dismissed = new Set(state.dismissed);
+    const incoming = (data.packages || []).filter((p) => p.code && !dismissed.has(p.code)).map((p) => ({ ...p, source: 'email' }));
+    const before = new Map(state.packages.map((p) => [p.code, p.updatedAt]));
+    const fresh = incoming.filter((p) => !before.has(p.code));
+    // Only touch known parcels when the inbox has something newer than our copy.
+    const changed = incoming.filter((p) => before.has(p.code) && (p.updatedAt || 0) > (before.get(p.code) || 0));
+    if (fresh.length || changed.length) upsert([...fresh, ...changed]);
+    state.ui.lastSync = Date.now();
+    state.ui.syncError = '';
+    save();
+    if (fresh.length) toast(`${fresh.length} new from email`);
+    else if (!quiet) toast('Inbox checked — nothing new');
+  } catch (err) {
+    state.ui.syncError = err.message === 'bad token' ? 'Wrong link or token' : 'Could not reach inbox';
+    save();
+    if (!quiet) toast(state.ui.syncError);
+  } finally {
+    syncing = false;
+    renderSync();
+  }
+}
+
+function ago(ts) {
+  if (!ts) return 'never';
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+}
+
+function renderSync() {
+  const btn = $('#sync-btn');
+  const connected = !!state.settings.inboxUrl;
+  btn.hidden = !connected;
+  btn.classList.toggle('spinning', syncing);
+  btn.classList.toggle('error', !!state.ui.syncError);
+  $('#sync-label').textContent = syncing ? 'Checking inbox…' : state.ui.syncError || `Inbox ${ago(state.ui.lastSync)}`;
+  $('#inbox-status').textContent = connected
+    ? `Connected · last checked ${ago(state.ui.lastSync)}${state.ui.syncError ? ' · ' + state.ui.syncError : ''}`
+    : 'Not connected';
 }
 
 // ---------- misc ----------
@@ -439,11 +518,7 @@ $('#board').addEventListener('click', async (e) => {
     setTimeout(() => { setStatus(p, 'delivered'); save(); render(); toast(`${p.title} delivered`); }, 520);
     return;
   }
-  if (t.dataset.remove) {
-    state.packages = state.packages.filter((p) => p.id !== t.dataset.remove);
-    save();
-    render();
-  }
+  if (t.dataset.remove) removePackage(t.dataset.remove);
 });
 
 $('#detail-form').addEventListener('change', (e) => {
@@ -452,9 +527,7 @@ $('#detail-form').addEventListener('change', (e) => {
 $('#detail-form').addEventListener('click', (e) => {
   const del = e.target.closest('[data-delete]');
   if (del && confirm('Delete this parcel?')) {
-    state.packages = state.packages.filter((p) => p.id !== del.dataset.delete);
-    save();
-    render();
+    removePackage(del.dataset.delete);
     detailSheet.close();
   }
 });
@@ -465,6 +538,18 @@ $('#detail-form').addEventListener('submit', (e) => {
 $('#set-postcode').addEventListener('change', (e) => { state.settings.postcode = e.target.value.trim().toUpperCase(); save(); render(); });
 $('#set-country').addEventListener('change', (e) => { state.settings.country = e.target.value; save(); render(); });
 $('#export-btn').addEventListener('click', exportData);
+$('#inbox-connect').addEventListener('click', () => {
+  const v = $('#set-inbox').value.trim();
+  if (v && !/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec\?.*token=/.test(v)) {
+    return toast('Paste the full web app link ending in ?token=…');
+  }
+  state.settings.inboxUrl = v;
+  state.ui.syncError = '';
+  save();
+  renderSync();
+  if (v) syncInbox(); else toast('Inbox disconnected');
+});
+$('#sync-btn').addEventListener('click', () => syncInbox());
 $('#import-toggle').addEventListener('click', () => { $('#import-box').hidden = !$('#import-box').hidden; });
 $('#import-btn').addEventListener('click', importData);
 $('#clear-delivered').addEventListener('click', () => {
@@ -484,9 +569,17 @@ if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !standalone && !state.ui.ins
 $('#install-dismiss').addEventListener('click', () => { state.ui.installHintDismissed = true; save(); $('#install-hint').hidden = true; });
 
 // Refresh relative dates ("Tomorrow" → "Today") when the app comes back to the foreground.
-document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  render();
+  syncInbox({ quiet: true });
+});
 
 render();
+renderSync();
+syncInbox({ quiet: true });
+setInterval(() => { if (!document.hidden) syncInbox({ quiet: true }); }, 5 * 60 * 1000);
+setInterval(renderSync, 30 * 1000);
 // Staggered card entrance only on launch, not on every re-render.
 setTimeout(() => document.body.classList.add('booted'), 1200);
 

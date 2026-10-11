@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/*.test.mjs",
-    "start": "npx --yes serve -l 5173 ."
+    "test": "node scripts/build-gas.mjs && node --test tests/*.test.mjs",
+    "build:gas": "node scripts/build-gas.mjs",
+    "start": "python -m http.server 5173"
   }
 }
