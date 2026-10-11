@@ -2,7 +2,7 @@
 
 All your inbound deliveries in one place. **Forward a shipping email to your Parcels Gmail** and it shows up in the app within a few minutes: tracking number, carrier, shop, what's inside and when it arrives. You can also paste emails into the app directly.
 
-**Open it:** https://m-rozal.github.io/parcel_tracker/
+**Open it:** https://m-rozal.github.io/all-parcel-tracking/
 
 ```
  you forward ──▶ parcels Gmail ──▶ Apps Script (every 5 min) ──▶ regex parser + Claude ──▶ web app JSON ──▶ Parcels app
