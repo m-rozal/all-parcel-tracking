@@ -75,7 +75,7 @@ Thesis: *one calm list that answers "what's arriving, when, and what needs me?"*
   4. **Delivered**: collapsed disclosure, history.
 - **Expandable row** (`disclosure-controls.md`): the collapsed row shows the date tile, title, "Carrier · status" and a chevron. Expanded it shows Status (3-step track), Carrier, Expected delivery, Tracking number as a link to the carrier site, then Copy, Edit and Delete. A `button[aria-expanded]` controls a region, and open state survives re-renders.
 - **Signature element:** a calendar-style **date tile** at the row's leading edge (`TUE` / `14`, or `TODAY`), tinted by state. The rest stays quiet.
-- **Tokens:** system font stack (SF on Apple, Segoe UI on Windows). Body 17 px, subhead 15, footnote 13, large title 34 bold. Tracking numbers in `ui-monospace`. Semantic colours with light and dark values, contrast-checked to ≥4.5:1 for text. Dark mode follows the OS, with no in-app toggle (`dark-mode.md › Best practices`). Carrier brand colours are dropped so that colour only means status (`color.md`: one colour, one meaning).
+- **Tokens:** system font stack (SF on Apple, Segoe UI on Windows). Body 17 px, subhead 15, footnote 13, large title 34 bold. Tracking numbers in `ui-monospace`. Dark-only warm palette with a yellow-orange accent (`#ffb224`), the owner's choice; `dark-mode.md › Best practices` allows a dark-only appearance. Text contrast-checked to ≥4.5:1. Carrier brand colours are dropped so that colour only means status (`color.md`: one colour, one meaning).
 - **Motion:** row expand only (grid-rows 0fr→1fr, 200 ms). Off under `prefers-reduced-motion`.
 - **Targets:** ≥44×44 px controls, visible `:focus-visible`, every icon button labelled.
 

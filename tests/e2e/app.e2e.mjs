@@ -153,7 +153,7 @@ await B.page.goto(APP);
 await B.page.click('#settings-btn');
 await B.page.fill('#set-inbox', LINK);
 await settle(B.page);
-await shot(B.page, '06-desktop-settings-dark');
+await shot(B.page, '06-desktop-settings');
 await B.page.click('#inbox-connect');
 await B.page.click('#settings-sheet [data-close]');
 await B.page.waitForSelector('.row');
@@ -163,7 +163,7 @@ await check('device B sees device A answers', async () => {
 });
 await B.page.click('.row[data-id="s2"] .row-head');
 await settle(B.page);
-await shot(B.page, '07-desktop-dark');
+await shot(B.page, '07-desktop-windows');
 
 await check('edit on B reaches A', async () => {
   await B.page.click('.row[data-id="s2"] [data-edit]');
@@ -205,12 +205,12 @@ await check('forwarded email lands on both devices', async () => {
 const C = await device({ scheme: 'dark' });
 await C.page.goto(APP);
 await settle(C.page);
-await shot(C.page, '08-phone-empty-dark');
+await shot(C.page, '08-phone-empty');
 await C.page.click('#add-btn');
 await C.page.fill('#paste-text', 'Je pakket van Coolblue is onderweg met PostNL. Track & trace: 3SABCD1234567 Verwacht morgen tussen 14:00 en 16:00.');
 await C.page.waitForSelector('#confirm-add');
 await settle(C.page);
-await shot(C.page, '09-phone-add-dark');
+await shot(C.page, '09-phone-add');
 await check('paste → add works offline-only too', async () => {
   await C.page.click('#confirm-add');
   await C.page.waitForSelector('.row');
@@ -222,7 +222,7 @@ await D.page.goto(`${APP}#connect=${encodeURIComponent(LINK)}`);
 await D.page.waitForSelector('.row');
 await D.page.click('#toggle-delivered');
 await settle(D.page);
-await shot(D.page, '10-desktop-light', { fullPage: true });
+await shot(D.page, '10-desktop-mac', { fullPage: true });
 await shot(A.page, '11-phone-final', { fullPage: true });
 
 await browser.close();
