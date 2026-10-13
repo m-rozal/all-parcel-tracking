@@ -20,6 +20,8 @@
  *   ALLOWED_SENDERS    required: comma-separated addresses allowed to send/forward mail in ('*' = anyone)
  *   ANTHROPIC_API_KEY  optional; enables Claude extraction
  *   CLAUDE_MODEL       optional; defaults to claude-opus-5-5
+ *   TRACK17_KEY        optional; a 17TRACK API key. syncTracking() then checks every open parcel
+ *                      hourly with the carrier (status, delivery date/window, latest event).
  */
 
 const INBOX_QUERY = 'in:inbox newer_than:14d';
@@ -30,7 +32,7 @@ const DEFAULT_MODEL = 'claude-opus-5-5';
 const SPREADSHEET_NAME = 'Parcels database';
 const SHEET_NAME = 'parcels';
 const COLUMNS = ['id', 'code', 'carrier', 'title', 'subject', 'retailer', 'eta', 'etaWindow', 'postcode', 'note',
-  'status', 'confirmed', 'source', 'createdAt', 'updatedAt', 'deliveredAt', 'deleted'];
+  'status', 'confirmed', 'source', 'createdAt', 'updatedAt', 'deliveredAt', 'deleted', 'tracking'];
 const NUMBER_COLUMNS = ['createdAt', 'updatedAt', 'deliveredAt'];
 const STATUSES = ['shipped', 'out', 'delivered']; // in order: status only moves forward on email
 const CONFIRMED_VALUES = ['', 'yes', 'no'];
@@ -38,6 +40,9 @@ const SOURCES = ['email', 'paste', 'manual'];
 const MAX_CHANGES = 200;
 const TOMBSTONE_DAYS = 60; // long enough for every device to have seen the delete
 const CONFIRMED_DAYS = 180; // arrived parcels stay as history for half a year
+const TRACK17_URL = 'https://api.17track.net/track/v2.2/';
+const TRACK17_BATCH = 40; // 17TRACK's per-request limit
+const TRACK17_MAX_AGE_DAYS = 90; // don't spend quota on parcels that are long gone
 
 // ---------- entry points ----------
 
@@ -58,6 +63,10 @@ function setup() {
     if (t.getHandlerFunction() === 'processInbox') ScriptApp.deleteTrigger(t);
   }
   ScriptApp.newTrigger('processInbox').timeBased().everyMinutes(5).create();
+  for (const t of ScriptApp.getProjectTriggers()) {
+    if (t.getHandlerFunction() === 'syncTracking') ScriptApp.deleteTrigger(t);
+  }
+  if (props.getProperty('TRACK17_KEY')) ScriptApp.newTrigger('syncTracking').timeBased().everyHours(1).create();
   processInbox(); // also creates the labels
 
   const token = props.getProperty('TOKEN');
@@ -65,6 +74,57 @@ function setup() {
   console.log('Setup done. Sheet: "' + SPREADSHEET_NAME + '" in this account\'s Drive. Token: ' + token);
   console.log('Next: Deploy → New deployment → Web app (Execute as: Me, Who has access: Anyone).');
   console.log('Then in the Parcels app → Settings, paste:  <web app URL>?token=' + token);
+}
+
+/**
+ * Trigger target (hourly, when TRACK17_KEY is set): ask 17TRACK about every open parcel.
+ * Registering a number spends 17TRACK quota, so each number is registered once and remembered;
+ * reading its status afterwards is free.
+ */
+function syncTracking() {
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('TRACK17_KEY')) return;
+  const runLock = LockService.getUserLock();
+  if (!runLock.tryLock(10000)) return;
+  try {
+    const now = Date.now();
+    const open = updateRows_(() => null).filter((r) => !r.deleted && !r.confirmed && r.status !== 'delivered' &&
+      now - (Number(r.createdAt) || now) < TRACK17_MAX_AGE_DAYS * 864e5);
+    const registered = new Set(JSON.parse(props.getProperty('TRACK17_REGISTERED') || '[]'));
+
+    for (const batch of chunks_(open.map((r) => r.code).filter((c) => !registered.has(c)), TRACK17_BATCH)) {
+      const data = track17_('register', batch.map((number) => ({ number })));
+      for (const a of data.accepted || []) registered.add(String(a.number).toUpperCase());
+      for (const r of data.rejected || []) {
+        const err = r.error || {};
+        // Already registered (e.g. after a reset of TRACK17_REGISTERED) is fine; anything else gets logged.
+        if (/already|-18019901/i.test(String(err.message) + ' ' + err.code)) registered.add(String(r.number).toUpperCase());
+        else console.warn('17TRACK would not register ' + r.number + ': ' + JSON.stringify(err));
+      }
+    }
+    props.setProperty('TRACK17_REGISTERED', JSON.stringify([...registered].slice(-2000)));
+
+    const infos = {};
+    for (const batch of chunks_(open.map((r) => r.code).filter((c) => registered.has(c)), TRACK17_BATCH)) {
+      const data = track17_('gettrackinfo', batch.map((number) => ({ number })));
+      for (const a of data.accepted || []) infos[String(a.number).toUpperCase()] = readTrack17_(a);
+    }
+    updateRows_((rows) => {
+      let changed = false;
+      for (const r of rows) if (!r.deleted && infos[r.code]) changed = applyTracking_(r, infos[r.code], now) || changed;
+      return changed ? rows : null;
+    });
+  } finally {
+    runLock.releaseLock();
+  }
+}
+
+/** Run by hand: logs 17TRACK's raw answer for one tracking number, to check what it knows. */
+function checkTracking(code) {
+  const number = String(code || '').toUpperCase() || (updateRows_(() => null).find((r) => !r.deleted && !r.confirmed) || {}).code;
+  if (!number) return console.log('No open parcel to check. Call checkTracking("YOURCODE").');
+  console.log('register: ' + JSON.stringify(track17_('register', [{ number }])));
+  console.log('gettrackinfo: ' + JSON.stringify(track17_('gettrackinfo', [{ number }])));
 }
 
 /** Run by hand if the link leaked. The old link stops working at once. */
@@ -158,6 +218,79 @@ function doPost(e) {
   } catch (err) {
     return json({ ok: false, error: String((err && err.message) || err) });
   }
+}
+
+// ---------- carrier tracking (17TRACK) ----------
+
+function track17_(path, body) {
+  const res = UrlFetchApp.fetch(TRACK17_URL + path, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { '17token': PropertiesService.getScriptProperties().getProperty('TRACK17_KEY') },
+    payload: JSON.stringify(body),
+    muteHttpExceptions: true,
+  });
+  const text = res.getContentText();
+  if (res.getResponseCode() !== 200) throw new Error('17TRACK ' + path + ' HTTP ' + res.getResponseCode() + ': ' + text.slice(0, 300));
+  const json = JSON.parse(text);
+  if (json.code !== 0) throw new Error('17TRACK ' + path + ' code ' + json.code + ': ' + text.slice(0, 300));
+  return json.data || {};
+}
+
+/** The bits we use from one gettrackinfo entry. Tolerant: missing fields come back empty. */
+function readTrack17_(a) {
+  const ti = a.track_info || {};
+  const ev = ti.latest_event || {};
+  const edd = (ti.time_metrics || {}).estimated_delivery_date || {};
+  return {
+    status: String((ti.latest_status || {}).status || ''),
+    event: String(ev.description || '').trim(),
+    eventAt: String(ev.time_iso || ev.time_utc || ''),
+    from: String(edd.from || ''),
+    to: String(edd.to || ''),
+  };
+}
+
+const TRACK17_STATUS = { InTransit: 'shipped', InfoReceived: 'shipped', OutForDelivery: 'out', AvailableForPickup: 'out', Delivered: 'delivered' };
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "2026-10-14T10:00:00+02:00" → { day: '2026-10-14', time: '10:00', short: '14 Oct' }, read as written (carrier's local time). */
+function isoParts_(s) {
+  const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  return { day: m[1] + '-' + m[2] + '-' + m[3], time: m[4] ? m[4] + ':' + m[5] : '', short: +m[3] + ' ' + MONTHS_SHORT[+m[2] - 1] };
+}
+
+/** Fold carrier news into a row. Same rules as email: forward-only status, nothing once answered. */
+function applyTracking_(row, info, now) {
+  if (row.confirmed) return false;
+  const next = Object.assign({}, row);
+  const status = TRACK17_STATUS[info.status];
+  if (status && STATUSES.indexOf(status) > STATUSES.indexOf(next.status)) {
+    next.status = status;
+    if (status === 'delivered' && !next.deliveredAt) next.deliveredAt = now;
+  }
+  const from = isoParts_(info.from), to = isoParts_(info.to);
+  if (from || to) {
+    const a = from || to, b = to || from;
+    next.eta = b.day;
+    if (a.day === b.day) next.etaWindow = a.time && b.time && a.time !== b.time ? a.time + '–' + b.time : next.etaWindow;
+    else next.etaWindow = 'earliest ' + a.short;
+  }
+  if (info.event) {
+    const at = isoParts_(info.eventAt);
+    next.tracking = ((at ? at.short + (at.time ? ' ' + at.time : '') + ' · ' : '') + info.event).slice(0, 500);
+  }
+  if (COLUMNS.every((k) => next[k] === row[k])) return false;
+  next.updatedAt = now;
+  Object.assign(row, next);
+  return true;
+}
+
+function chunks_(list, n) {
+  const out = [];
+  for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n));
+  return out;
 }
 
 // ---------- extraction ----------

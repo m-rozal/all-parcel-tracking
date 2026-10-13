@@ -154,7 +154,7 @@ test('setup creates the token, the "Parcels database" sheet with a text-formatte
   assert.equal(file.tab.frozen, 1);
   assert.deepEqual(file.tab.cells[0], [...COLUMNS]);
   assert.deepEqual([...COLUMNS], ['id', 'code', 'carrier', 'title', 'subject', 'retailer', 'eta', 'etaWindow', 'postcode',
-    'note', 'status', 'confirmed', 'source', 'createdAt', 'updatedAt', 'deliveredAt', 'deleted']);
+    'note', 'status', 'confirmed', 'source', 'createdAt', 'updatedAt', 'deliveredAt', 'deleted', 'tracking']);
   assert.ok(file.tab.text.has('2,7') && file.tab.text.has('1000,17'), 'whole sheet is plain text');
   assert.deepEqual(triggers.map((t) => [t.fn, t.n]), [['processInbox', 5]]);
 
@@ -352,4 +352,89 @@ test('processInbox prunes old tombstones and long-confirmed parcels', () => {
   ] });
   ctx.processInbox();
   assert.deepEqual(rows().map((r) => r.id), ['recent-delete', 'yes', 'old-open']);
+});
+
+// ---------- 17TRACK ----------
+
+function track17Env(rows, answer) {
+  const calls = [];
+  const fetch = (url, opts) => {
+    const path = url.split('/').pop();
+    const body = JSON.parse(opts.payload);
+    calls.push({ path, body, token: opts.headers['17token'] });
+    const data = path === 'register'
+      ? { accepted: body.filter((b) => b.number !== 'OLD12345678').map((b) => ({ number: b.number })),
+        rejected: body.filter((b) => b.number === 'OLD12345678').map((b) => ({ number: b.number, error: { code: -18019901, message: 'The tracking number is already registered.' } })) }
+      : { accepted: body.map((b) => ({ number: b.number, track_info: answer(b.number) })), rejected: [] };
+    return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ code: 0, data }) };
+  };
+  return { ...makeEnv({ props: { TRACK17_KEY: 'k17' }, rows, fetch }), calls };
+}
+
+test('syncTracking: registers once, then applies status, delivery window and latest event', () => {
+  const now = Date.now();
+  const { ctx, rows, calls } = track17Env([
+    rec({ id: 'p1', code: 'LR636491869NL', createdAt: now - DAY, updatedAt: now - DAY }),
+    rec({ id: 'p2', code: 'OLD12345678', createdAt: now - DAY, updatedAt: now - DAY }),
+    rec({ id: 'p3', code: 'DONE12345678', confirmed: 'yes', createdAt: now - DAY }),
+    rec({ id: 'p4', code: 'GONE12345678', deleted: true, createdAt: now - DAY }),
+  ], (n) => n === 'LR636491869NL' ? {
+    latest_status: { status: 'InTransit' },
+    latest_event: { time_iso: '2026-10-13T16:40:00+02:00', description: 'New delivery time: tomorrow between 10:00 and 12:30' },
+    time_metrics: { estimated_delivery_date: { from: '2026-10-14T10:00:00+02:00', to: '2026-10-14T12:30:00+02:00' } },
+  } : { latest_status: { status: 'OutForDelivery' } });
+
+  ctx.syncTracking();
+  const reg = calls.filter((c) => c.path === 'register');
+  assert.equal(reg.length, 1);
+  assert.deepEqual(reg[0].body.map((b) => b.number).sort(), ['LR636491869NL', 'OLD12345678']); // not answered/deleted ones
+  assert.equal(reg[0].token, 'k17');
+  const p1 = rows().find((r) => r.id === 'p1');
+  assert.equal(p1.eta, '2026-10-14');
+  assert.equal(p1.etaWindow, '10:00–12:30');
+  assert.equal(p1.tracking, '13 Oct 16:40 · New delivery time: tomorrow between 10:00 and 12:30');
+  assert.ok(Number(p1.updatedAt) > now - 1000);
+  assert.equal(rows().find((r) => r.id === 'p2').status, 'out'); // "already registered" still counts
+
+  calls.length = 0;
+  ctx.syncTracking();
+  assert.equal(calls.filter((c) => c.path === 'register').length, 0); // quota spent only once
+  assert.equal(calls.filter((c) => c.path === 'gettrackinfo').length, 1);
+});
+
+test('syncTracking: delivered moves forward; a range becomes "earliest"; answered parcels untouched', () => {
+  const now = Date.now();
+  const { ctx, rows } = track17Env([
+    rec({ id: 'a', code: 'LX330057537JP', createdAt: now - DAY }),
+    rec({ id: 'b', code: 'RR123456789NL', status: 'out', createdAt: now - DAY }),
+  ], (n) => n === 'LX330057537JP'
+    ? { latest_status: { status: 'InTransit' }, time_metrics: { estimated_delivery_date: { from: '2026-10-28', to: '2026-11-07' } } }
+    : { latest_status: { status: 'Delivered' } });
+  ctx.syncTracking();
+  const a = rows().find((r) => r.id === 'a'), b = rows().find((r) => r.id === 'b');
+  assert.equal(a.eta, '2026-11-07');
+  assert.equal(a.etaWindow, 'earliest 28 Oct');
+  assert.equal(b.status, 'delivered');
+  assert.ok(Number(b.deliveredAt) > 0);
+
+  const c = track17Env([rec({ id: 'c', code: 'RR123456789NL', confirmed: 'no', createdAt: now - DAY })], () => ({ latest_status: { status: 'Delivered' } }));
+  c.ctx.syncTracking();
+  assert.equal(c.rows()[0].status, 'shipped');
+  assert.equal(c.calls.length, 0); // nothing open → no API calls
+});
+
+test('syncTracking: no key → no calls; setup adds the hourly trigger only with a key', () => {
+  const { ctx, triggers } = makeEnv({ props: { TOKEN: 't' }, fetch: () => { throw new Error('no network'); } });
+  ctx.syncTracking();
+  ctx.setup();
+  assert.ok(!triggers.some((t) => t.fn === 'syncTracking'));
+  const k = makeEnv({ props: { TOKEN: 't', TRACK17_KEY: 'k' } });
+  k.ctx.setup();
+  assert.ok(k.triggers.some((t) => t.fn === 'syncTracking' && t.n === 60));
+});
+
+test('17TRACK API errors surface instead of silently doing nothing', () => {
+  const fetch = () => ({ getResponseCode: () => 200, getContentText: () => '{"code":-18010002,"data":{"errors":[{"message":"Invalid security key"}]}}' });
+  const { ctx } = makeEnv({ props: { TRACK17_KEY: 'bad' }, fetch, rows: [rec({ createdAt: Date.now() })] });
+  assert.throws(() => ctx.syncTracking(), /code -18010002/);
 });

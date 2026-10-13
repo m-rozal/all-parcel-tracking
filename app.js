@@ -1,6 +1,6 @@
 import { CARRIERS, extractPackages, guessCarrier, trackingUrl } from './parser.js';
 
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 const KEY = 'parcels.v2';
 const OLD_KEY = 'parcels.v1';
 const STATUSES = [
@@ -33,6 +33,7 @@ function normalize(p) {
     confirmed: p.confirmed === 'yes' || p.confirmed === 'no' ? p.confirmed : '',
     source: p.source || 'manual', createdAt: Number(p.createdAt) || Date.now(), updatedAt: Number(p.updatedAt) || Date.now(),
     deliveredAt: Number(p.deliveredAt) || '', deleted: p.deleted === true || p.deleted === 'true' || p.deleted === 'TRUE',
+    tracking: p.tracking || '', // latest carrier event, filled in by the script's 17TRACK sync
   };
 }
 
@@ -315,6 +316,7 @@ function row(p, kind, today) {
         <dl class="facts">
           <dt>Status</dt>
           <dd><span class="track"><span class="track-steps" aria-hidden="true">${STATUSES.map((_, s) => `<i class="${s <= step ? 'on' : ''}"></i>`).join('')}</span>${esc(statusLabel)}</span></dd>
+          ${p.tracking ? `<dt>Latest update</dt><dd>${esc(p.tracking)}</dd>` : ''}
           <dt>Carrier</dt><dd>${esc(carrierName(p) === 'Other' ? 'Unknown' : carrierName(p))}</dd>
           <dt>Expected delivery</dt><dd>${esc(etaText(p))}</dd>
           <dt>Tracking number</dt>

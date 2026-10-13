@@ -41,6 +41,7 @@ Use a **private/incognito window** signed in **only** as `littlehelper689@gmail.
 | `ALLOWED_SENDERS` | **Required.** Your main email address (comma-separate several). Mail from any other address is ignored, so strangers can't add parcels. If it's empty, nothing is read. |
 | `ANTHROPIC_API_KEY` | *Recommended.* A key from [console.anthropic.com](https://console.anthropic.com). Lets Claude read messy emails, item names and dates written in prose. |
 | `CLAUDE_MODEL` | *Optional.* Defaults to `claude-opus-5-5`. `claude-haiku-5-5` is much cheaper and fine for this. |
+| `TRACK17_KEY` | *Optional.* A [17TRACK API](https://api.17track.net) key. The script then checks each open parcel with the carrier every hour, so delivery-time changes, "out for delivery" and "delivered" show up even when no email says so. See [Live carrier tracking](#live-carrier-tracking-17track). |
 
 Click **Save script properties**.
 
@@ -85,6 +86,19 @@ The execution log shows your **token**. You can find it again later under **Proj
   → **Create filter** → tick **Forward it to** littlehelper689 → **Create filter**.
 
 The script checks littlehelper689 every 5 minutes. It labels mail it used `Parcels/Logged` and mail without a tracking number `Parcels/No tracking`. The app syncs when you open it and every 2 minutes while it's open. Tap the sync pill to sync right away.
+
+### Live carrier tracking (17TRACK)
+
+Emails only tell the app what the shop wrote at the time. To follow the carrier itself (PostNL moving your delivery to tomorrow 10:00–12:30, Japan Post handing over to PostNL, "delivered"):
+
+1. Sign up at [api.17track.net](https://api.17track.net) → **Settings → Security → Access Key** → copy the key.
+2. In the script: **Project Settings → Script properties → Add** `TRACK17_KEY` = that key → **Save script properties**.
+3. Paste the latest `Code.gs` and run **`setup`** again. It adds an hourly `syncTracking` trigger and keeps your token and Sheet.
+4. Optional check: in the function menu pick **`checkTracking`** → **Run**. The log shows 17TRACK's raw answer for your first open parcel.
+
+**Quota:** 17TRACK counts each tracking number you *register*; checking it afterwards is free. The script registers each open parcel once (not delivered, not answered, under 90 days old). The free plan's allowance is small (around 100 numbers; check their pricing page), which is plenty for personal use.
+
+The expanded parcel then shows **Latest update** (e.g. "13 Oct 16:40 · New delivery time: tomorrow between 10:00 and 12:30") and the date, time window and status follow the carrier. Once you've answered "Did it arrive?", the carrier can no longer change that parcel.
 
 ---
 

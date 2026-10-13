@@ -1,5 +1,5 @@
 // Offline shell. Bump VERSION whenever app files change so phones pick up the new build.
-const VERSION = 'parcels-v2.2.0';
+const VERSION = 'parcels-v2.3.0';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'parser.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 

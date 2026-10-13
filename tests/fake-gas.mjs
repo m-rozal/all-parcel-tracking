@@ -100,11 +100,14 @@ export function makeEnv({ messages = [], props = {}, fetch, sheet = true, rows: 
     ScriptApp: {
       getProjectTriggers: () => triggers.slice(),
       deleteTrigger: (t) => triggers.splice(triggers.indexOf(t), 1),
-      newTrigger: (fn) => ({ timeBased: () => ({ everyMinutes: (n) => ({ create: () => {
-        const t = { fn, n, getHandlerFunction: () => fn };
-        triggers.push(t);
-        return t;
-      } }) }) }),
+      newTrigger: (fn) => {
+        const make = (n) => ({ create: () => {
+          const t = { fn, n, getHandlerFunction: () => fn };
+          triggers.push(t);
+          return t;
+        } });
+        return { timeBased: () => ({ everyMinutes: (n) => make(n), everyHours: (h) => make(h * 60) }) };
+      },
     },
   };
   vm.createContext(ctx);

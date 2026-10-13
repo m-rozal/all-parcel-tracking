@@ -51,7 +51,7 @@ async function routeBackend(context) {
 const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const now = Date.now();
 const seed = [
-  { id: 's1', code: '3SCBLU123456789', carrier: 'postnl', title: 'Coolblue', subject: 'Sony WH-1000XM6 headphones', retailer: 'Coolblue', eta: day(0), etaWindow: '14:00–16:00', postcode: '5612AB', status: 'out', source: 'email' },
+  { id: 's1', code: '3SCBLU123456789', carrier: 'postnl', title: 'Coolblue', subject: 'Sony WH-1000XM6 headphones', retailer: 'Coolblue', eta: day(0), etaWindow: '14:00–16:00', postcode: '5612AB', status: 'out', source: 'email', tracking: '13 Oct 08:12 · Parcel is with the driver' },
   { id: 's2', code: 'JVGL06240512345678901', carrier: 'dhl', title: 'bol.com', subject: 'Philips Hue starter kit', retailer: 'bol.com', eta: day(2), status: 'shipped', source: 'email' },
   { id: 's3', code: '05212345678901', carrier: 'dpd', title: 'Zalando', subject: 'Running shoes', retailer: 'Zalando', eta: day(5), status: 'shipped', source: 'email' },
   { id: 's4', code: 'LP00123456789012', carrier: 'cainiao', title: 'AliExpress', subject: 'USB-C cables (3×)', retailer: 'AliExpress', status: 'shipped', source: 'paste' },
