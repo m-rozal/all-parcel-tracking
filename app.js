@@ -1,6 +1,6 @@
 import { CARRIERS, extractPackages, guessCarrier, trackingUrl } from './parser.js';
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const KEY = 'parcels.v2';
 const OLD_KEY = 'parcels.v1';
 const STATUSES = [

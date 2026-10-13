@@ -93,3 +93,19 @@ test('empty and junk input', () => {
   assert.deepEqual(extractPackages('', NOW), []);
   assert.deepEqual(extractPackages('Hello, thanks for your order!', NOW), []);
 });
+
+test('Japan Post S10 code with a transit-time range instead of a date', () => {
+  const p = one(`If everything works smoothly, the shipping should take about 15 - 25 days from Japan to Netherlands.
+You can track your shipment here: http://www.post.japanpost.jp/int/index_en.html
+check via the tracking number: LX330057537JP`);
+  assert.equal(p.code, 'LX330057537JP');
+  assert.equal(p.carrier, 'japanpost');
+  assert.equal(p.eta, '2026-11-05'); // 11 Oct + 25 days
+  assert.equal(p.etaWindow, 'earliest 26 Oct'); // 11 Oct + 15 days
+  assert.equal(trackingUrl(p), 'https://trackings.post.japanpost.jp/services/srv/search/direct?reqCodeNo1=LX330057537JP&locale=en');
+});
+
+test('a range of numbers that is not days is not a delivery estimate', () => {
+  const p = one('Track & trace: 3SABCD1234567. Pick-up point open 9 - 17 h.');
+  assert.equal(p.eta, undefined);
+});

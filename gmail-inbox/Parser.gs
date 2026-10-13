@@ -26,6 +26,8 @@ const CARRIERS = {
     url: (c) => `https://www.royalmail.com/track-your-item#/tracking-results/${c}` },
   usps: { name: 'USPS', color: '#333366', ink: '#fff',
     url: (c) => `https://tools.usps.com/go/TrackConfirmAction?tLabels=${c}` },
+  japanpost: { name: 'Japan Post', color: '#cc0000', ink: '#fff',
+    url: (c) => `https://trackings.post.japanpost.jp/services/srv/search/direct?reqCodeNo1=${c}&locale=en` },
   cainiao: { name: 'Cainiao', color: '#ff6a00', ink: '#fff',
     url: (c) => `https://global.cainiao.com/newDetail.htm?mailNoList=${c}` },
   other: { name: 'Other', color: '#1a1714', ink: '#f2c230',
@@ -52,19 +54,19 @@ const STRONG = [
 ];
 
 // UPU S10 codes (e.g. RR123456789NL) end in the origin country.
-const S10_COUNTRY = { NL: 'postnl', DE: 'dhl', BE: 'bpost', GB: 'royalmail', US: 'usps', CN: 'cainiao' };
+const S10_COUNTRY = { NL: 'postnl', DE: 'dhl', BE: 'bpost', GB: 'royalmail', US: 'usps', CN: 'cainiao', JP: 'japanpost' };
 
 // Carrier names as they show up in email text. UPS is case-sensitive to avoid "groups", "pick-ups".
 const CARRIER_WORDS = [
   ['postnl', /post\s?nl/i], ['dhl', /\bdhl\b/i], ['dpd', /\bdpd\b/i], ['ups', /\bUPS\b/],
   ['gls', /\bgls\b/i], ['fedex', /fed\s?ex/i], ['budbee', /budbee/i], ['bpost', /\bbpost\b/i],
-  ['royalmail', /royal\s?mail/i], ['usps', /\busps\b/i], ['cainiao', /cainiao/i],
+  ['royalmail', /royal\s?mail/i], ['usps', /\busps\b/i], ['cainiao', /cainiao/i], ['japanpost', /japan\s?post|日本郵便/i],
 ];
 
 const HOSTS = [
   ['postnl', /postnl\./], ['dhl', /dhl\./], ['dpd', /dpd\./], ['ups', /(^|\.)ups\.com$/],
   ['gls', /gls-?(group|info)?\./], ['fedex', /fedex\./], ['budbee', /budbee\./], ['bpost', /bpost\./],
-  ['royalmail', /royalmail\./], ['usps', /usps\./], ['cainiao', /cainiao\./], ['other', /17track\.|parcelsapp\./],
+  ['royalmail', /royalmail\./], ['usps', /usps\./], ['cainiao', /cainiao\./], ['japanpost', /japanpost\.jp$/], ['other', /17track\.|parcelsapp\./],
 ];
 
 const TRACK_PARAMS = /^(tracking-?id|tracking[_-]?(number|nr|code)|tracknum|tracknums|trknbr|tracknumbers|barcode|b|match|parcelnumber|parcelnr|parcel|piececode|idc|awb|tlabels|nums|code|query|q|id|mailnolist|itemcode)$/i;
@@ -270,7 +272,18 @@ function findEta(text, now) {
       return { eta, etaWindow: t ? `${t[1].replace('.', ':')}–${t[2].replace('.', ':')}` : undefined };
     }
   }
-  return {};
+  return transitRange(text, now);
+}
+
+// "should take about 15 - 25 days": expect it by the late end (so we only ask "did it arrive?"
+// once it's really late) and keep the early end as a note.
+function transitRange(text, now) {
+  const m = text.match(/\b(\d{1,2})\s*(?:-|–|—|to|tot|à|a|bis)\s*(\d{1,2})\s*(?:business\s+|working\s+|werk)?(?:days|dagen|tage|jours)\b/i);
+  if (!m || +m[2] < +m[1] || +m[2] > 90) return {};
+  const at = (n) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const early = at(+m[1]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return { eta: iso(at(+m[2])), etaWindow: `earliest ${early}` };
 }
 
 function parseDate(s, now = new Date()) {

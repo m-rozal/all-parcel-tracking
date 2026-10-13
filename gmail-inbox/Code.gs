@@ -245,7 +245,7 @@ const CLAUDE_SCHEMA = {
         type: 'object',
         properties: {
           tracking_number: { type: 'string' },
-          carrier: { type: 'string', enum: ['postnl', 'dhl', 'dpd', 'ups', 'gls', 'fedex', 'amazon', 'budbee', 'bpost', 'royalmail', 'usps', 'cainiao', 'other'] },
+          carrier: { type: 'string', enum: ['postnl', 'dhl', 'dpd', 'ups', 'gls', 'fedex', 'amazon', 'budbee', 'bpost', 'royalmail', 'usps', 'cainiao', 'japanpost', 'other'] },
           retailer: { type: 'string' },
           item_description: { type: 'string' },
           expected_date: { type: 'string' },
@@ -268,8 +268,8 @@ For each parcel with a tracking number, return:
 - carrier: the delivery company, "other" if unclear.
 - retailer: the shop that sold it, "" if unknown.
 - item_description: what is inside in a few words, e.g. "Sony WH-1000XM6 headphones", "" if not stated.
-- expected_date: YYYY-MM-DD if the email gives a delivery date (the email's Date header tells you the year and what "tomorrow" means), else "".
-- time_window: like "14:00–16:00" if given, else "".
+- expected_date: YYYY-MM-DD if the email gives a delivery date (the email's Date header tells you the year and what "tomorrow" means). If it only gives a transit time like "15–25 days", use the email's date plus the larger number. Else "".
+- time_window: like "14:00–16:00" if given; for a transit-time range, "earliest " plus the email's date plus the smaller number, like "earliest 28 Oct". Else "".
 - status: "delivered" only if it says the parcel was delivered, "out" if out for delivery today, else "shipped".
 Set is_shipping_email to false for emails that are not about a shipment.`;
 
