@@ -56,6 +56,38 @@ test('ALLOWED_SENDERS blocks strangers but accepts forwards', () => {
   assert.equal(b.rows()[0].code, '3SCBLU123456789');
 });
 
+test('ALLOWED_SENDERS: empty ignores all mail; look-alike and Reply-To spoofs are refused', () => {
+  const e = makeEnv({ messages: [fakeMessage(POSTNL_MAIL)], props: { ALLOWED_SENDERS: '' } });
+  e.ctx.processInbox();
+  assert.equal(e.rows().length, 0);
+
+  const lookalike = fakeMessage({ ...POSTNL_MAIL, id: 'm5', from: 'Me <evilme@gmail.com>' });
+  const replyTo = Object.assign(fakeMessage({ ...POSTNL_MAIL, id: 'm6', from: 'x@evil.test' }), { getReplyTo: () => 'me@gmail.com' });
+  const named = fakeMessage({ ...POSTNL_MAIL, id: 'm7', from: '"me@gmail.com" <x@evil.test>' });
+  for (const msg of [lookalike, replyTo, named]) {
+    const env = makeEnv({ messages: [msg], props: { ALLOWED_SENDERS: 'me@gmail.com' } });
+    env.ctx.processInbox();
+    assert.equal(env.rows().length, 0, msg.getId());
+  }
+});
+
+test('hand-forward without a marker: the forwarder is not taken for the shop', () => {
+  const msg = fakeMessage({
+    id: 'm8', from: 'Me <me@gmail.com>', subject: 'Fwd: shipped',
+    body: 'Your DPD parcel 05298765432109 from MediaMarkt is on its way.',
+    html: '<a href="https://tracking.dpd.de/status/nl_NL/parcel/05298765432109">Track</a>',
+  });
+  const { ctx, rows } = makeEnv({ messages: [msg], props: { ALLOWED_SENDERS: 'me@gmail.com' } });
+  ctx.processInbox();
+  assert.equal(rows()[0].title, 'MediaMarkt');
+});
+
+test('formula-looking text is stored inert', () => {
+  const { ctx } = makeEnv();
+  for (const v of ['=IMPORTDATA("x")', '+1+1', '-2+3', '@SUM']) assert.equal(ctx.toCell_('note', v), "'" + v);
+  assert.equal(ctx.toCell_('note', 'Desk lamp'), 'Desk lamp');
+});
+
 test('click-tracker links are followed to the carrier URL', () => {
   const msg = fakeMessage({
     id: 'm4', from: 'Shop <hi@shop.test>', subject: 'Shipped', body: 'Your order is on its way.',

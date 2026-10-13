@@ -17,6 +17,7 @@ const esc = (s = '') => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const todayISO = () => isoDate(new Date());
+const lowerRel = (t) => (/^(Today|Tomorrow|Yesterday)$/.test(t) ? t.toLowerCase() : t);
 const carrierName = (p) => (CARRIERS[p.carrier] || CARRIERS.other).name;
 const trackSite = (p) => (p.carrier && p.carrier !== 'other' ? carrierName(p) : '17TRACK');
 
@@ -200,7 +201,7 @@ function renderSync() {
 function askReason(p, today) {
   if (p.confirmed) return null;
   if (p.status === 'delivered') return `${carrierName(p) === 'Other' ? 'Tracking' : carrierName(p)} says delivered. Did you get it?`;
-  if (p.eta && p.eta < today) return `Expected ${relDay(p.eta).text.toLowerCase()}. Did it arrive?`;
+  if (p.eta && p.eta < today) return `Expected ${lowerRel(relDay(p.eta).text)}. Did it arrive?`;
   return null;
 }
 
@@ -245,7 +246,7 @@ function tile(p, kind) {
   let top, body;
   if (kind === 'done') { top = 'Got it'; body = ICON.check; }
   else if (kind === 'problem') { top = 'Issue'; body = ICON.alert; }
-  else if (p.status === 'out' && (!p.eta || p.eta <= todayISO())) { top = 'Out'; body = '<span class="tile-num word">TODAY</span>'; }
+  else if (p.status === 'out' && (!p.eta || p.eta <= todayISO())) { top = 'Today'; body = `<span class="tile-num">${new Date().getDate()}</span>`; }
   else if (p.eta) {
     const { date } = relDay(p.eta);
     top = date.toLocaleDateString('en-GB', { weekday: 'short' });
@@ -255,7 +256,7 @@ function tile(p, kind) {
 }
 
 function stateText(p, kind) {
-  if (kind === 'done') return `Received${p.deliveredAt ? ' ' + relDay(isoDate(new Date(p.deliveredAt))).text.toLowerCase() : ''}`;
+  if (kind === 'done') return `Received${p.deliveredAt ? ' ' + lowerRel(relDay(isoDate(new Date(p.deliveredAt))).text) : ''}`;
   if (kind === 'problem') return 'Not received';
   if (p.status === 'delivered') return 'Delivered';
   if (p.status === 'out') return `Out for delivery${p.etaWindow ? ' · ' + p.etaWindow : ''}`;
@@ -355,8 +356,11 @@ function render() {
       <div class="empty">
         ${ICON.box}
         <h2>No parcels yet</h2>
-        <p>Forward a shipping email to your Parcels inbox, or add one here by pasting the email or a tracking number.</p>
-        <button class="btn" type="button" data-add>Add Parcel</button>
+        <p>Forward shipping emails to <b>littlehelper689@gmail.com</b> and they appear here. Or add one by pasting the email or a tracking number.</p>
+        <div class="button-row center">
+          <button class="btn" type="button" data-add>Add Parcel</button>
+          ${state.settings.inboxUrl ? '' : '<button class="btn secondary" type="button" data-connect>Connect Database</button>'}
+        </div>
       </div>`;
     return;
   }
@@ -435,7 +439,7 @@ function draftEmail(p, settings = {}) {
     'Could you please look into this and let me know whether you can send a replacement or give a refund?',
     '',
     'Thank you,',
-    '',
+    settings.name || '',
   ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n');
   return { subject, body };
 }
@@ -603,6 +607,7 @@ function saveDetail(form) {
 const settingsSheet = $('#settings-sheet');
 
 function openSettings() {
+  $('#set-name').value = state.settings.name || '';
   $('#set-postcode').value = state.settings.postcode || '';
   $('#set-country').value = state.settings.country || 'NL';
   $('#set-inbox').value = state.settings.inboxUrl || '';
@@ -670,7 +675,7 @@ $('#scan-results').addEventListener('click', (e) => {
 });
 
 $('#board').addEventListener('click', (e) => {
-  const t = e.target.closest('[data-toggle],[data-copy],[data-yes],[data-no],[data-mail],[data-edit],[data-remove],[data-add],#toggle-delivered');
+  const t = e.target.closest('[data-toggle],[data-copy],[data-yes],[data-no],[data-mail],[data-edit],[data-remove],[data-add],[data-connect],#toggle-delivered');
   if (!t) return;
   const d = t.dataset;
   if (t.id === 'toggle-delivered') { state.ui.showDelivered = !state.ui.showDelivered; save(); return render(); }
@@ -681,6 +686,7 @@ $('#board').addEventListener('click', (e) => {
   if (d.mail) return openMail(d.mail);
   if (d.edit) return openDetail(d.edit);
   if (d.add != null) return openAdd();
+  if (d.connect != null) return openSettings();
   if (d.remove) {
     const p = byId(d.remove);
     if (p && confirm(`Delete “${p.title}” from all your devices?`)) { removePackage(d.remove); toast('Deleted'); }
@@ -697,6 +703,7 @@ $('#detail-form').addEventListener('submit', (e) => {
 for (const id of ['#mail-to', '#mail-subject', '#mail-body']) $(id).addEventListener('input', updateMailLink);
 $('#mail-copy').addEventListener('click', () => copy(`Subject: ${$('#mail-subject').value}\n\n${$('#mail-body').value}`, 'Email copied'));
 
+$('#set-name').addEventListener('change', (e) => { state.settings.name = e.target.value.trim(); save(); });
 $('#set-postcode').addEventListener('change', (e) => { state.settings.postcode = e.target.value.trim().toUpperCase(); save(); render(); });
 $('#set-country').addEventListener('change', (e) => { state.settings.country = e.target.value; save(); render(); });
 $('#inbox-connect').addEventListener('click', () => connect($('#set-inbox').value));
@@ -740,7 +747,16 @@ if (hash.get('connect') || incoming) history.replaceState(null, '', location.pat
 render();
 renderSync();
 if (hash.get('connect')) {
-  connect(hash.get('connect'));
+  // A link can point anywhere: say which database, and only switch with consent.
+  const link = hash.get('connect');
+  const id = (link.match(/\/s\/([^/]+)\/exec/) || [])[1] || '?';
+  const short = id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-6)}` : id;
+  const ask = state.settings.inboxUrl && state.settings.inboxUrl !== link
+    ? `Switch this device to a different parcel database (script ${short})? Your parcels here will be copied into it.`
+    : `Connect this device to your parcel database (script ${short})? Parcels on this device will be copied into it.`;
+  if (state.settings.inboxUrl === link) sync();
+  else if (confirm(ask)) connect(link);
+  else sync();
 } else {
   sync();
 }

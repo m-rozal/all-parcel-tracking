@@ -2,7 +2,7 @@
 
 All your inbound deliveries in one list, the same on your iPhone, MacBook and Windows laptop. **Forward a shipping email to `littlehelper689@gmail.com`** and the parcel appears within a few minutes, with tracking number, carrier, shop, what's inside and expected delivery. When a parcel should have arrived, the app asks you whether it did. If it didn't, it drafts the complaint email for you.
 
-**Open it:** https://m-rozal.github.io/all-parcel-tracking/
+**Open it:** https://m-rozal.github.io/all-parcel-tracking/ (GitHub Pages serves the `main` branch: repo **Settings → Pages → Deploy from branch → main / root**).
 
 ```
  your Gmail ──forward──▶ littlehelper689 Gmail
@@ -38,15 +38,17 @@ Use a **private/incognito window** signed in **only** as `littlehelper689@gmail.
 
 | Property | Value |
 |---|---|
-| `ALLOWED_SENDERS` | Your main email address (comma-separate several). Mail from anyone else is ignored, so strangers can't add parcels. |
+| `ALLOWED_SENDERS` | **Required.** Your main email address (comma-separate several). Mail from any other address is ignored, so strangers can't add parcels. If it's empty, nothing is read. |
 | `ANTHROPIC_API_KEY` | *Recommended.* A key from [console.anthropic.com](https://console.anthropic.com). Lets Claude read messy emails, item names and dates written in prose. |
 | `CLAUDE_MODEL` | *Optional.* Defaults to `claude-opus-5-5`. `claude-haiku-5-5` is much cheaper and fine for this. |
 
+Click **Save script properties**.
+
 ### 3. Run setup
 
-In the editor's toolbar pick the **`setup`** function → **Run**. Approve the permissions: Gmail (read and label), Sheets/Drive (the database), external requests (Claude and tracking links), and triggers (the 5-minute timer). Google will warn that the app is unverified. It's your own script, so choose **Advanced → Go to Parcels inbox**.
+Open **`Code.gs`** in the editor. In the toolbar's function menu (next to **Debug**) pick **`setup`** → **Run**. Approve the permissions: Gmail (read and label), Sheets/Drive (the database), external requests (Claude and tracking links), and triggers (the 5-minute timer). Google will warn that the app is unverified. It's your own script, so choose **Advanced → Go to Parcels inbox**.
 
-The execution log shows your **token**. A Google Sheet called **Parcels database** now exists in littlehelper689's Drive. You can open it at any time to see or fix your data.
+The execution log shows your **token**. You can find it again later under **Project Settings → Script properties → `TOKEN`**. A Google Sheet called **Parcels database** now exists in littlehelper689's Drive. You can open it at any time to see or fix your data.
 
 ### 4. Deploy as a web app
 
@@ -69,7 +71,7 @@ The execution log shows your **token**. A Google Sheet called **Parcels database
 3. Open it on each other device. It connects on its own.
 
 **Install it like an app:**
-- **iPhone:** open in **Safari** → **Share** → **Add to Home Screen**. Open the link from step 2 *inside the installed app's browser*, or paste the database link in its Settings. The home-screen app has its own storage.
+- **iPhone:** open the link from step 2 in **Safari** → **Share** → **Add to Home Screen**. The home-screen app keeps its own storage, so open it once, go to **⚙︎ Settings**, paste the database link and tap **Connect**.
 - **MacBook:** Safari → **File → Add to Dock**, or Chrome → ⋮ → **Cast, save and share → Install page as app**.
 - **Windows:** Edge → ⋯ → **Apps → Install this site as an app**, or Chrome → ⋮ → **Install**.
 
@@ -78,7 +80,7 @@ The execution log shows your **token**. A Google Sheet called **Parcels database
 - **By hand:** forward any shipping or tracking email to `littlehelper689@gmail.com`.
 - **Automatically:** in your **main** Gmail → ⚙︎ **See all settings** → **Forwarding and POP/IMAP** → **Add a forwarding address** → `littlehelper689@gmail.com`. Google sends a confirmation email to littlehelper689. Open it there and click the link. Then **Filters** → **Create a new filter** → *Has the words*:
   ```
-  "track & trace" OR "tracking number" OR "out for delivery" OR verzonden OR bezorgd OR "je pakket"
+  "track & trace" OR "tracking number" OR "out for delivery" OR shipped OR "has been dispatched" OR verzonden OR onderweg OR bezorgd OR zending OR "je pakket"
   ```
   → **Create filter** → tick **Forward it to** littlehelper689 → **Create filter**.
 
@@ -100,7 +102,8 @@ Carriers it recognises: PostNL, DHL, DPD, UPS, GLS, FedEx, Amazon (TBA), Budbee,
 
 - **Where it lives:** one Google Sheet in littlehelper689's Drive. Each device keeps an offline copy and uploads edits made offline once it's back online.
 - **Who can reach it:** only someone with the database link (a 122-bit random token). The Sheet itself is private to littlehelper689.
-- **Who can add parcels by email:** only the addresses in `ALLOWED_SENDERS`.
+- **Who can add parcels by email:** only mail whose real sender address (or Gmail's auto-forward header) is in `ALLOWED_SENDERS`, matched exactly. Only the inbox is read; Gmail's spam filter removes most forged senders first.
+- **Connect links** (`#connect=…`) always ask before switching a device to a database.
 - **Claude:** only reads emails that reached littlehelper689 from an allowed sender. It is told to treat the email as data, never as instructions, and a tracking number is saved only if it literally appears in the email.
 - **Housekeeping:** deleted parcels are purged after 60 days and received ones after 180 days.
 - The repo holds only code.

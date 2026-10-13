@@ -235,7 +235,7 @@ export function emailMeta(text, now = new Date()) {
 
 function findRetailer(text, subject) {
   // In forwarded mail, the original sender sits after the "Forwarded message" marker.
-  const fwd = text.search(/forwarded message|doorgestuurd bericht|weitergeleitete nachricht|begin forwarded/i);
+  const fwd = text.search(/forwarded message|doorgestuurd bericht|weitergeleitete nachricht|begin forwarded|original message|oorspronkelijk bericht/i);
   const scope = fwd >= 0 ? text.slice(fwd) : text;
   const from = scope.match(/^\s*(?:from|van|von)\s*:\s*"?([^"<\n]+?)"?\s*(?:<([^>]+)>)?\s*$/im);
   if (from) {

@@ -192,10 +192,11 @@ await check('forwarded email lands on both devices', async () => {
   gas.deliver(fakeMessage({
     id: 'fw1', from: 'Me <me@example.com>', subject: 'Fwd: Your order has shipped',
     body: 'Your DPD parcel 05298765432109 from MediaMarkt is on its way. Expected delivery tomorrow.',
-    html: '<a href="https://tracking.dpd.de/status/nl_NL/parcel/05298765432109">Track</a>',
+    html: '<a href="https://tracking.dpd.de/status/nl_NL/parcel/05298765432109">Track</a>', date: new Date(),
   }));
   gas.ctx.processInbox();
-  assert.ok(gas.rows().find((r) => r.code === '05298765432109'));
+  const row = gas.rows().find((r) => r.code === '05298765432109');
+  assert.equal(row.title, 'MediaMarkt'); // not "Me", the forwarder
   await A.page.click('#sync-btn');
   await A.page.waitForSelector('.row .row-sub >> text=DPD');
 });

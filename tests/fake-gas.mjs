@@ -69,7 +69,7 @@ function fakeSheet() {
 }
 
 export function makeEnv({ messages = [], props = {}, fetch, sheet = true, rows: seed = [] } = {}) {
-  const store = { ...props };
+  const store = { ALLOWED_SENDERS: '*', ...props };
   const thread = { labels: [], read: false, getMessages: () => messages, addLabel(l) { this.labels.push(l.name); }, markRead() { this.read = true; } };
   const label = (name) => ({ name });
   const files = {};
