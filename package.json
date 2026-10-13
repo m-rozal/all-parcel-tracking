@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node scripts/build-gas.mjs && node --test tests/*.test.mjs",
     "build:gas": "node scripts/build-gas.mjs",
+    "e2e": "node scripts/build-gas.mjs && node tests/e2e/app.e2e.mjs",
     "start": "python -m http.server 5173"
   }
 }
